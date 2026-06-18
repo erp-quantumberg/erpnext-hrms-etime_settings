@@ -7,7 +7,13 @@ app_license = "mit"
 
 # Apps
 # ------------------
-
+scheduler_events = {
+    "cron": {
+        "* * * * *": [
+            "etime_settings.attendance.sync_etime_attendance"
+        ]
+    }
+}
 # required_apps = []
 
 # Each item in the list will be shown as an app in the apps page
