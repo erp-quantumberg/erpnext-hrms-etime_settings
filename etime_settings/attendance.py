@@ -35,21 +35,29 @@ def sync_etime_attendance():
 
         data = response.json()
 
-        frappe.logger().info(
-            f"Records Found: {len(data.get('InOutPunchData', []))}"
-        )
+        latest_timestamp = settings.last_sync_time
 
         for row in data.get("InOutPunchData", []):
 
             try:
-                process_log(row, "INTime", "IN")
-                process_log(row, "OUTTime", "OUT")
+                ts1 = process_log(row, "INTime", "IN")
+                ts2 = process_log(row, "OUTTime", "OUT")
+
+                if ts1 and (not latest_timestamp or ts1 > latest_timestamp):
+                    latest_timestamp = ts1
+
+                if ts2 and (not latest_timestamp or ts2 > latest_timestamp):
+                    latest_timestamp = ts2
 
             except Exception:
                 frappe.log_error(
                     frappe.get_traceback(),
                     f"Employee Sync Error : {row.get('Empcode')}"
                 )
+
+        if latest_timestamp:
+            settings.last_sync_time = latest_timestamp
+            settings.save(ignore_permissions=True)
 
         frappe.db.commit()
 
@@ -64,11 +72,8 @@ def process_log(row, time_field, log_type):
 
     punch_time = row.get(time_field)
 
-    if not punch_time:
-        return
-
-    if punch_time == "--:--":
-        return
+    if not punch_time or punch_time == "--:--":
+        return None
 
     timestamp = datetime.strptime(
         f"{row['DateString']} {punch_time}",
@@ -86,9 +91,13 @@ def process_log(row, time_field, log_type):
             employee_fieldname="attendance_device_id"
         )
 
+        return timestamp
+
     except Exception:
 
         frappe.log_error(
             frappe.get_traceback(),
             f"Failed Employee {row['Empcode']}"
         )
+
+        return None
