@@ -1,20 +1,21 @@
 import frappe
 import requests
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 def sync_etime_attendance():
     try:
         settings = frappe.get_single("ETime Settings")
 
-        date_str = datetime.now().strftime("%d/%m/%Y")
+        to_date = datetime.now()
+        from_date = to_date - timedelta(days=3)
 
         url = (
             f"{settings.api_url}"
             f"?Empcode=ALL"
-            f"&FromDate={date_str}"
-            f"&ToDate={date_str}"
+            f"&FromDate={from_date.strftime('%d/%m/%Y')}"
+            f"&ToDate={to_date.strftime('%d/%m/%Y')}"
         )
 
         auth_string = settings.get_password("auth_string")
@@ -34,12 +35,21 @@ def sync_etime_attendance():
 
         data = response.json()
 
-        frappe.logger().info(f"Records Found: {len(data.get('InOutPunchData', []))}")
+        frappe.logger().info(
+            f"Records Found: {len(data.get('InOutPunchData', []))}"
+        )
 
         for row in data.get("InOutPunchData", []):
 
-            process_log(row, "INTime", "IN")
-            process_log(row, "OUTTime", "OUT")
+            try:
+                process_log(row, "INTime", "IN")
+                process_log(row, "OUTTime", "OUT")
+
+            except Exception:
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    f"Employee Sync Error : {row.get('Empcode')}"
+                )
 
         frappe.db.commit()
 
@@ -54,20 +64,10 @@ def process_log(row, time_field, log_type):
 
     punch_time = row.get(time_field)
 
-    if not punch_time or punch_time == "--:--":
+    if not punch_time:
         return
 
-    employee = frappe.db.get_value(
-        "Employee",
-        {"attendance_device_id": row["Empcode"]},
-        "name"
-    )
-
-    if not employee:
-        frappe.log_error(
-            f"Employee not found for Empcode {row['Empcode']}",
-            "eTime Employee Mapping"
-        )
+    if punch_time == "--:--":
         return
 
     timestamp = datetime.strptime(
@@ -75,20 +75,20 @@ def process_log(row, time_field, log_type):
         "%d/%m/%Y %H:%M"
     )
 
-    if frappe.db.exists(
-        "Employee Checkin",
-        {
-            "employee": employee,
-            "time": timestamp,
-            "log_type": log_type
-        }
-    ):
-        return
+    try:
 
-    frappe.get_doc({
-        "doctype": "Employee Checkin",
-        "employee": employee,
-        "time": timestamp,
-        "log_type": log_type,
-        "device_id": "eTime Office"
-    }).insert(ignore_permissions=True)
+        frappe.call(
+            "hrms.hr.doctype.employee_checkin.employee_checkin.add_log_based_on_employee_field",
+            employee_field_value=row["Empcode"],
+            timestamp=timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+            device_id="Office Log",
+            log_type=log_type,
+            employee_fieldname="attendance_device_id"
+        )
+
+    except Exception:
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            f"Failed Employee {row['Empcode']}"
+        )
