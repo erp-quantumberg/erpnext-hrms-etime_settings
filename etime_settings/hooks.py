@@ -8,11 +8,9 @@ app_license = "mit"
 # Apps
 # ------------------
 scheduler_events = {
-    "cron": {
-        "*/1, * * * *": [
-            "etime_settings.attendance.sync_etime_attendance"
-        ]
-    }
+    "all": [
+        "etime_settings.attendance.sync_etime_attendance"
+    ]
 }
 # required_apps = []
 
