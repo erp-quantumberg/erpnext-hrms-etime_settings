@@ -1,6 +1,6 @@
 import frappe
 import requests
-from requests.auth import HTTPBasicAuth
+import base64
 from datetime import datetime
 
 
@@ -17,12 +17,16 @@ def sync_etime_attendance():
             f"&ToDate={date_str}"
         )
 
+        auth_string = settings.get_password("auth_string")
+
+        headers = {
+            "Authorization": "Basic "
+            + base64.b64encode(auth_string.encode()).decode()
+        }
+
         response = requests.get(
             url,
-            auth=HTTPBasicAuth(
-                settings.api_username,
-                settings.get_password("api_password")
-            ),
+            headers=headers,
             timeout=60
         )
 
@@ -30,30 +34,12 @@ def sync_etime_attendance():
 
         data = response.json()
 
-        last_sync = settings.last_sync_time
-        latest_processed = last_sync
+        frappe.logger().info(f"Records Found: {len(data.get('InOutPunchData', []))}")
 
         for row in data.get("InOutPunchData", []):
 
-            latest_processed = process_log(
-                row=row,
-                time_field="INTime",
-                log_type="IN",
-                latest_processed=latest_processed,
-                last_sync=last_sync
-            )
-
-            latest_processed = process_log(
-                row=row,
-                time_field="OUTTime",
-                log_type="OUT",
-                latest_processed=latest_processed,
-                last_sync=last_sync
-            )
-
-        if latest_processed:
-            settings.last_sync_time = latest_processed
-            settings.save(ignore_permissions=True)
+            process_log(row, "INTime", "IN")
+            process_log(row, "OUTTime", "OUT")
 
         frappe.db.commit()
 
@@ -64,35 +50,16 @@ def sync_etime_attendance():
         )
 
 
-def process_log(
-    row,
-    time_field,
-    log_type,
-    latest_processed,
-    last_sync
-):
+def process_log(row, time_field, log_type):
 
     punch_time = row.get(time_field)
 
-    if not punch_time:
-        return latest_processed
-
-    if punch_time == "--:--":
-        return latest_processed
-
-    timestamp = datetime.strptime(
-        f"{row['DateString']} {punch_time}",
-        "%d/%m/%Y %H:%M"
-    )
-
-    if last_sync and timestamp <= last_sync:
-        return latest_processed
+    if not punch_time or punch_time == "--:--":
+        return
 
     employee = frappe.db.get_value(
         "Employee",
-        {
-            "attendance_device_id": str(row["Empcode"])
-        },
+        {"attendance_device_id": row["Empcode"]},
         "name"
     )
 
@@ -101,32 +68,27 @@ def process_log(
             f"Employee not found for Empcode {row['Empcode']}",
             "eTime Employee Mapping"
         )
-        return latest_processed
+        return
 
-    exists = frappe.db.exists(
+    timestamp = datetime.strptime(
+        f"{row['DateString']} {punch_time}",
+        "%d/%m/%Y %H:%M"
+    )
+
+    if frappe.db.exists(
         "Employee Checkin",
         {
             "employee": employee,
-            "time": timestamp
-        }
-    )
-
-    if exists:
-        return latest_processed
-
-    doc = frappe.get_doc(
-        {
-            "doctype": "Employee Checkin",
-            "employee": employee,
             "time": timestamp,
-            "log_type": log_type,
-            "device_id": "eTime Office"
+            "log_type": log_type
         }
-    )
+    ):
+        return
 
-    doc.insert(ignore_permissions=True)
-
-    if not latest_processed or timestamp > latest_processed:
-        latest_processed = timestamp
-
-    return latest_processed
+    frappe.get_doc({
+        "doctype": "Employee Checkin",
+        "employee": employee,
+        "time": timestamp,
+        "log_type": log_type,
+        "device_id": "eTime Office"
+    }).insert(ignore_permissions=True)

@@ -7,7 +7,7 @@
  "field_order": [
   "etime_settings_section",
   "api_username",
-  "api_password",
+  "auth_string",
   "last_sync_time",
   "api_url"
  ],
@@ -23,11 +23,6 @@
    "label": "API Username"
   },
   {
-   "fieldname": "api_password",
-   "fieldtype": "Password",
-   "label": "API Password"
-  },
-  {
    "fieldname": "last_sync_time",
    "fieldtype": "Datetime",
    "label": "Last Sync Time"
@@ -36,13 +31,18 @@
    "fieldname": "api_url",
    "fieldtype": "Data",
    "label": "API URL"
+  },
+  {
+   "fieldname": "auth_string",
+   "fieldtype": "Password",
+   "label": "Auth String"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-06-18 20:54:49.426460",
+ "modified": "2026-06-18 21:06:18.529662",
  "modified_by": "Administrator",
  "module": "Etime Settings",
  "name": "ETime Settings",
