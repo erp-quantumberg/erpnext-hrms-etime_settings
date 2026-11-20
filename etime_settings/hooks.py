@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 scheduler_events = {
-    "hourly": [
+    "daily": [
         "etime_settings.attendance.sync_etime_attendance"
     ]
 }
